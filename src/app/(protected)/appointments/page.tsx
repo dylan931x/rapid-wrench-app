@@ -136,9 +136,15 @@ export default async function AppointmentsPage() {
             <div className="rounded-3xl border border-slate-200 bg-slate-50 p-4 text-sm text-slate-700">
               <p className="font-medium text-slate-900">Booking URL</p>
               <p className="mt-2 break-all">{bookingUrl}</p>
-              <Link href={bookingUrl} className="mt-3 inline-flex items-center gap-2 text-sm font-medium text-slate-900">
-                <LinkIcon className="h-4 w-4" /> Open booking page
-              </Link>
+              <a
+  href={bookingUrl}
+  target="_blank"
+  rel="noreferrer"
+  className="mt-3 inline-flex items-center gap-2 text-sm text-blue-600 underline"
+>
+  <LinkIcon className="h-4 w-4" />
+  Open booking page
+</a>
             </div>
           ) : null}
         </div>
