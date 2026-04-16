@@ -291,9 +291,12 @@ function ReferenceCard({
           <h3 className="text-base font-semibold text-slate-900">{title}</h3>
           <p className="mt-1 text-sm text-slate-500">Tap to prefill the create form.</p>
         </div>
-        <Link href={href} className="inline-flex items-center gap-2 rounded-2xl bg-slate-100 px-3 py-2 text-sm font-medium text-slate-700">
-          <Search className="h-4 w-4" /> Use
-        </Link>
+        <a
+  href={href}
+  className="inline-flex items-center gap-2 rounded-2xl bg-slate-900 px-4 py-2 text-sm font-medium text-white"
+>
+  <Search className="h-4 w-4" /> Use
+</a>
       </div>
 
       <div className="mt-4 grid gap-4 md:grid-cols-2">

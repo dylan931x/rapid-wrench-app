@@ -6,12 +6,19 @@ import { createClient } from "@/lib/supabase/server";
 import { buildAvailableSlots, hasConflict, isWithinAvailability } from "@/lib/schedule";
 import {
   appointmentSchema,
+  appointmentStatusOptions,
   availabilityRuleSchema,
   blockedTimeSchema,
   bookingSlugSchema,
   publicBookingSchema,
   serviceTypeSchema,
 } from "@/lib/validators/appointment";
+
+type AppointmentStatus = (typeof appointmentStatusOptions)[number];
+
+function isAppointmentStatus(value: string): value is AppointmentStatus {
+  return appointmentStatusOptions.includes(value as AppointmentStatus);
+}
 
 async function requireUser() {
   const supabase = await createClient();
@@ -20,7 +27,9 @@ async function requireUser() {
     error,
   } = await supabase.auth.getUser();
 
-  if (error || !user) throw new Error("Not authenticated");
+  if (error || !user) {
+    throw new Error("Not authenticated");
+  }
 
   return { supabase, user };
 }
@@ -44,16 +53,22 @@ async function ensureAppointmentSlotAvailable({
   endAt: Date;
   ignoreAppointmentId?: string;
 }) {
-  const [{ data: rules, error: rulesError }, { data: blocked, error: blockedError }, { data: existing, error: existingError }] =
-    await Promise.all([
-      supabase.from("availability_rules").select("day_of_week, start_time, end_time, is_available").eq("user_id", userId),
-      supabase.from("blocked_times").select("start_at, end_at").eq("user_id", userId),
-      supabase
-        .from("appointments")
-        .select("id, start_at, end_at")
-        .eq("user_id", userId)
-        .in("status", ["requested", "confirmed"]) ,
-    ]);
+  const [
+    { data: rules, error: rulesError },
+    { data: blocked, error: blockedError },
+    { data: existing, error: existingError },
+  ] = await Promise.all([
+    supabase
+      .from("availability_rules")
+      .select("day_of_week, start_time, end_time, is_available")
+      .eq("user_id", userId),
+    supabase.from("blocked_times").select("start_at, end_at").eq("user_id", userId),
+    supabase
+      .from("appointments")
+      .select("id, start_at, end_at")
+      .eq("user_id", userId)
+      .in("status", ["requested", "confirmed"]),
+  ]);
 
   if (rulesError) throw new Error(rulesError.message);
   if (blockedError) throw new Error(blockedError.message);
@@ -76,9 +91,15 @@ async function ensureAppointmentSlotAvailable({
 
 export async function updateBookingSlug(formData: FormData) {
   const { supabase, user } = await requireUser();
-  const parsed = bookingSlugSchema.parse({ booking_slug: formData.get("booking_slug") });
+  const parsed = bookingSlugSchema.parse({
+    booking_slug: formData.get("booking_slug"),
+  });
 
-  const { error } = await supabase.from("profiles").update({ booking_slug: parsed.booking_slug }).eq("id", user.id);
+  const { error } = await supabase
+    .from("profiles")
+    .update({ booking_slug: parsed.booking_slug })
+    .eq("id", user.id);
+
   if (error) throw new Error(error.message);
 
   revalidateAppointmentRoutes(parsed.booking_slug);
@@ -86,6 +107,7 @@ export async function updateBookingSlug(formData: FormData) {
 
 export async function createServiceType(formData: FormData) {
   const { supabase, user } = await requireUser();
+
   const parsed = serviceTypeSchema.parse({
     name: formData.get("name"),
     description: formData.get("description"),
@@ -98,20 +120,30 @@ export async function createServiceType(formData: FormData) {
     user_id: user.id,
     ...parsed,
   });
+
   if (error) throw new Error(error.message);
+
   revalidateAppointmentRoutes();
 }
 
 export async function deleteServiceType(formData: FormData) {
   const { supabase, user } = await requireUser();
   const id = String(formData.get("id") || "");
-  const { error } = await supabase.from("service_types").delete().eq("id", id).eq("user_id", user.id);
+
+  const { error } = await supabase
+    .from("service_types")
+    .delete()
+    .eq("id", id)
+    .eq("user_id", user.id);
+
   if (error) throw new Error(error.message);
+
   revalidateAppointmentRoutes();
 }
 
 export async function createAvailabilityRule(formData: FormData) {
   const { supabase, user } = await requireUser();
+
   const parsed = availabilityRuleSchema.parse({
     day_of_week: formData.get("day_of_week"),
     start_time: formData.get("start_time"),
@@ -119,42 +151,68 @@ export async function createAvailabilityRule(formData: FormData) {
     is_available: formData.get("is_available") === "on",
   });
 
-  const { error } = await supabase.from("availability_rules").insert({ user_id: user.id, ...parsed });
+  const { error } = await supabase.from("availability_rules").insert({
+    user_id: user.id,
+    ...parsed,
+  });
+
   if (error) throw new Error(error.message);
+
   revalidateAppointmentRoutes();
 }
 
 export async function deleteAvailabilityRule(formData: FormData) {
   const { supabase, user } = await requireUser();
   const id = String(formData.get("id") || "");
-  const { error } = await supabase.from("availability_rules").delete().eq("id", id).eq("user_id", user.id);
+
+  const { error } = await supabase
+    .from("availability_rules")
+    .delete()
+    .eq("id", id)
+    .eq("user_id", user.id);
+
   if (error) throw new Error(error.message);
+
   revalidateAppointmentRoutes();
 }
 
 export async function createBlockedTime(formData: FormData) {
   const { supabase, user } = await requireUser();
+
   const parsed = blockedTimeSchema.parse({
     title: formData.get("title"),
     start_at: formData.get("start_at"),
     end_at: formData.get("end_at"),
   });
 
-  const { error } = await supabase.from("blocked_times").insert({ user_id: user.id, ...parsed });
+  const { error } = await supabase.from("blocked_times").insert({
+    user_id: user.id,
+    ...parsed,
+  });
+
   if (error) throw new Error(error.message);
+
   revalidateAppointmentRoutes();
 }
 
 export async function deleteBlockedTime(formData: FormData) {
   const { supabase, user } = await requireUser();
   const id = String(formData.get("id") || "");
-  const { error } = await supabase.from("blocked_times").delete().eq("id", id).eq("user_id", user.id);
+
+  const { error } = await supabase
+    .from("blocked_times")
+    .delete()
+    .eq("id", id)
+    .eq("user_id", user.id);
+
   if (error) throw new Error(error.message);
+
   revalidateAppointmentRoutes();
 }
 
 export async function createAppointment(formData: FormData) {
   const { supabase, user } = await requireUser();
+
   const parsed = appointmentSchema.parse({
     service_type_id: formData.get("service_type_id"),
     customer_id: formData.get("customer_id"),
@@ -172,7 +230,13 @@ export async function createAppointment(formData: FormData) {
 
   const startAt = new Date(parsed.start_at);
   const endAt = new Date(parsed.end_at);
-  await ensureAppointmentSlotAvailable({ supabase, userId: user.id, startAt, endAt });
+
+  await ensureAppointmentSlotAvailable({
+    supabase,
+    userId: user.id,
+    startAt,
+    endAt,
+  });
 
   const { error } = await supabase.from("appointments").insert({
     user_id: user.id,
@@ -189,29 +253,47 @@ export async function createAppointment(formData: FormData) {
     contact_phone: parsed.contact_phone ?? null,
     contact_email: parsed.contact_email ?? null,
   });
+
   if (error) throw new Error(error.message);
+
   revalidateAppointmentRoutes();
 }
 
 export async function updateAppointmentStatus(formData: FormData) {
   const { supabase, user } = await requireUser();
   const id = String(formData.get("id") || "");
-  const status = String(formData.get("status") || "requested");
-  const { error } = await supabase.from("appointments").update({ status }).eq("id", id).eq("user_id", user.id);
+  const rawStatus = String(formData.get("status") || "requested");
+  const status: AppointmentStatus = isAppointmentStatus(rawStatus) ? rawStatus : "requested";
+
+  const { error } = await supabase
+    .from("appointments")
+    .update({ status })
+    .eq("id", id)
+    .eq("user_id", user.id);
+
   if (error) throw new Error(error.message);
+
   revalidateAppointmentRoutes();
 }
 
 export async function deleteAppointment(formData: FormData) {
   const { supabase, user } = await requireUser();
   const id = String(formData.get("id") || "");
-  const { error } = await supabase.from("appointments").delete().eq("id", id).eq("user_id", user.id);
+
+  const { error } = await supabase
+    .from("appointments")
+    .delete()
+    .eq("id", id)
+    .eq("user_id", user.id);
+
   if (error) throw new Error(error.message);
+
   revalidateAppointmentRoutes();
 }
 
 export async function publicCreateBooking(formData: FormData) {
   const admin = createAdminClient();
+
   const parsed = publicBookingSchema.parse({
     booking_slug: formData.get("booking_slug"),
     service_type_id: formData.get("service_type_id"),
@@ -225,8 +307,15 @@ export async function publicCreateBooking(formData: FormData) {
     notes: formData.get("notes"),
   });
 
-  const { data: owner, error: ownerError } = await admin.from("profiles").select("id, booking_slug").eq("booking_slug", parsed.booking_slug).single();
-  if (ownerError || !owner) throw new Error("Booking page not found.");
+  const { data: owner, error: ownerError } = await admin
+    .from("profiles")
+    .select("id, booking_slug")
+    .eq("booking_slug", parsed.booking_slug)
+    .single();
+
+  if (ownerError || !owner) {
+    throw new Error("Booking page not found.");
+  }
 
   const { data: serviceType, error: serviceError } = await admin
     .from("service_types")
@@ -234,15 +323,25 @@ export async function publicCreateBooking(formData: FormData) {
     .eq("id", parsed.service_type_id)
     .eq("user_id", owner.id)
     .single();
-  if (serviceError || !serviceType || !serviceType.public_booking_enabled) throw new Error("Selected service is not available for public booking.");
+
+  if (serviceError || !serviceType || !serviceType.public_booking_enabled) {
+    throw new Error("Selected service is not available for public booking.");
+  }
 
   const slotStart = new Date(parsed.slot_start_at);
   const slotEnd = new Date(slotStart.getTime() + serviceType.duration_minutes * 60 * 1000);
 
   const [{ data: rules }, { data: blocked }, { data: existing }] = await Promise.all([
-    admin.from("availability_rules").select("day_of_week, start_time, end_time, is_available").eq("user_id", owner.id),
+    admin
+      .from("availability_rules")
+      .select("day_of_week, start_time, end_time, is_available")
+      .eq("user_id", owner.id),
     admin.from("blocked_times").select("start_at, end_at").eq("user_id", owner.id),
-    admin.from("appointments").select("start_at, end_at").eq("user_id", owner.id).in("status", ["requested", "confirmed"]),
+    admin
+      .from("appointments")
+      .select("start_at, end_at")
+      .eq("user_id", owner.id)
+      .in("status", ["requested", "confirmed"]),
   ]);
 
   const candidateSlots = buildAvailableSlots({
@@ -255,7 +354,10 @@ export async function publicCreateBooking(formData: FormData) {
   });
 
   const slotStillAvailable = candidateSlots.some((slot) => slot.startAt === slotStart.toISOString());
-  if (!slotStillAvailable) throw new Error("That appointment slot is no longer available.");
+
+  if (!slotStillAvailable) {
+    throw new Error("That appointment slot is no longer available.");
+  }
 
   let customerId: string | null = null;
   let vehicleId: string | null = null;
@@ -282,7 +384,11 @@ export async function publicCreateBooking(formData: FormData) {
       })
       .select("id")
       .single();
-    if (customerError || !customer) throw new Error(customerError?.message ?? "Unable to create customer.");
+
+    if (customerError || !customer) {
+      throw new Error(customerError?.message ?? "Unable to create customer.");
+    }
+
     customerId = customer.id;
   }
 
@@ -298,8 +404,13 @@ export async function publicCreateBooking(formData: FormData) {
       })
       .select("id")
       .single();
-    if (!vehicleError && vehicle) vehicleId = vehicle.id;
+
+    if (!vehicleError && vehicle) {
+      vehicleId = vehicle.id;
+    }
   }
+
+  const bookingStatus: AppointmentStatus = serviceType.requires_approval ? "requested" : "confirmed";
 
   const { error: appointmentError } = await admin.from("appointments").insert({
     user_id: owner.id,
@@ -308,7 +419,7 @@ export async function publicCreateBooking(formData: FormData) {
     service_type_id: serviceType.id,
     title: serviceType.name,
     notes: parsed.notes ?? null,
-    status: serviceType.requires_approval ? "requested" : "confirmed",
+    status: bookingStatus,
     source: "customer",
     start_at: slotStart.toISOString(),
     end_at: slotEnd.toISOString(),
@@ -319,7 +430,10 @@ export async function publicCreateBooking(formData: FormData) {
     vehicle_make: parsed.vehicle_make ?? null,
     vehicle_model: parsed.vehicle_model ?? null,
   });
-  if (appointmentError) throw new Error(appointmentError.message);
 
-  revalidateAppointmentRoutes(owner.booking_slug);
+  if (appointmentError) {
+    throw new Error(appointmentError.message);
+  }
+
+  revalidateAppointmentRoutes(owner.booking_slug ?? undefined);
 }
